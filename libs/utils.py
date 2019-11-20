@@ -1,27 +1,46 @@
+import os
+
 import tensorflow as tf
 
-def spectral_normalization(weight, num_iter, idx):
-    w_shape = weight.shape.as_list()
-    weight = tf.reshape(weight, [-1, w_shape[-1]])
-    u = tf.get_variable("u_sn"+str(idx), 
-                        shape=[1, w_shape[-1]], 
-                        initializer=tf.random_normal_initializer(), 
-                        trainable=False)
+from libs.lr_scheduler import WarmUpSchedule
 
-    u_hat = u
-    v_hat = None
-    for i in range(num_iter):
-        v_ = tf.matmul(u_hat, tf.transpose(weight))
-        v_hat = tf.nn.l2_normalize(v_)
+def set_cuda_visible_device(ngpus):
+    empty = []
+    for i in range(4):
+        os.system('nvidia-smi -i '+str(i)+' | grep "No running" | wc -l > empty_gpu_check')
+        f = open('empty_gpu_check')
+        out = int(f.read())
+        if int(out)==1:
+            empty.append(i)
+    if len(empty)<ngpus:
+        print ('avaliable gpus are less than required')
+    cmd = ''
+    for i in range(ngpus):        
+        cmd+=str(empty[i])+','
+    return cmd
 
-        u_ = tf.matmul(v_hat, weight)
-        u_hat = tf.nn.l2_normalize(u_)
+def get_learning_rate_scheduler(lr_schedule='stair', 
+                                graph_dim=256, 
+                                warmup_steps=1000, 
+                                init_lr=1e-3, 
+                                decay_steps=500, 
+                                decay_rate=0.1, 
+                                staircase=True):
 
-    u_hat = tf.stop_gradient(u_hat)
-    v_hat = tf.stop_gradient(v_hat)
-    sigma = tf.matmul(tf.matmul(v_hat, weight), tf.transpose(u_hat))
+    scheduler = None
+    if lr_schedule == 'warmup':
+        scheduler = WarmUpSchedule(
+            d_model=graph_dim, 
+            warmup_steps=warmup_steps
+        )
 
-    with tf.control_dependencies([u.assign(u_hat)]):
-        w_norm = weight / tf.maximum(1.0, sigma)
-        w_norm = tf.reshape(w_norm, w_shape)
-    return w_norm
+    elif lr_schedule == 'stair':
+
+        scheduler = tf.keras.optimizers.schedules.ExponentialDecay(
+            initial_learning_rate=init_lr,
+            decay_steps=decay_steps,
+            decay_rate=decay_rate,
+            staircase=staircase
+        )            
+
+    return scheduler
