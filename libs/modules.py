@@ -50,6 +50,7 @@ class NodeEmbedding(tf.keras.layers.Layer):
                 h2 = self.layer_norm2(h2)             
         else:
              h2 = h1                
+
         return h2    
 
 class GraphEmbedding(tf.keras.layers.Layer):

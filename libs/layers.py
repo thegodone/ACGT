@@ -42,7 +42,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         attn = matmul_qk / tf.math.sqrt(scale)
         if adj is not None:
             attn = tf.multiply(attn, adj)
-        attn = tf.nn.softmax(attn, axis=1)
+        attn = tf.nn.softmax(attn, axis=-1)
         out = tf.matmul(attn, xv)
         return out
 
@@ -64,7 +64,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         h = self.multi_head_attention(q, k, v, adj)
         h = tf.reshape(h, (batch_size, -1, self.out_dim))
         return h
-        
+
 
 class GraphAttn(tf.keras.layers.Layer):
     def __init__(self, out_dim, num_heads, **kwargs):
@@ -72,13 +72,33 @@ class GraphAttn(tf.keras.layers.Layer):
 
         assert out_dim % num_heads == 0
     
-        self.mha = MultiHeadAttention(out_dim, num_heads)
+        self.depth = out_dim // num_heads
+        self.num_heads = num_heads
+        self.wq = [tf.keras.layers.Dense(units=self.depth, use_bias=False) for _ in range(num_heads)]
+        self.wk = [tf.keras.layers.Dense(units=self.depth, use_bias=False) for _ in range(num_heads)]
+        self.wv = [tf.keras.layers.Dense(units=self.depth, use_bias=False) for _ in range(num_heads)]
         self.dense = tf.keras.layers.Dense(units=out_dim, use_bias=False)
 
         self.act = tf.nn.relu
 
+    def attn_matrix(self, q, k, adj):
+        scale = tf.cast(tf.shape(k)[-1], tf.float32)
+        attn = tf.matmul(q, k, transpose_b=True)
+        attn = tf.multiply(attn, adj)
+        attn /= tf.math.sqrt(scale)
+        attn = tf.nn.tanh(attn)
+        return attn
+
     def call(self, x, adj):
-        h = self.mha(x, x, x, adj)
+        h_list = []
+        for i in range(self.num_heads):
+            q = self.wq[i](x)
+            k = self.wk[i](x)
+            v = self.wv[i](x)
+            attn = self.attn_matrix(q, k, adj)
+            h = tf.matmul(attn, v)
+            h_list.append(h)
+        h = tf.concat(h_list, axis=-1)    
         h = self.dense(h)
         h = self.act(h)
         return h
@@ -163,9 +183,9 @@ class PMAReadout(tf.keras.layers.Layer):
 
         init = tf.initializers.glorot_normal()
         self.seed_vector = tf.Variable(
-            initial_value=init(shape=(1, num_seeds, 64),
-                               dtype='float32'),
-            trainable=True
+            initial_value=tf.ones(shape=(1, num_seeds, 64),
+                                  dtype='float32'),
+            trainable=False
         )
         self.mha= MultiHeadAttention(out_dim, num_heads)
         self.layer_norm = tf.keras.layers.LayerNormalization()
@@ -175,5 +195,5 @@ class PMAReadout(tf.keras.layers.Layer):
         out = tf.tile(self.seed_vector, [batch_size, 1, 1])
         out = self.mha(out, x, x)
         out = tf.squeeze(out)
-        #out = self.layer_norm(out)
+        out = self.layer_norm(out)
         return tf.nn.sigmoid(out)

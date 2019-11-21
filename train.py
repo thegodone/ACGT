@@ -20,10 +20,23 @@ tf.random.set_seed(1234)
 cmd = set_cuda_visible_device(1)
 print ("Using ", cmd[:-1], "-th GPU")
 os.environ["CUDA_VISIBLE_DEVICES"] = cmd[:-1]
-#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
+def save_outputs(model, dataset, model_name):
+    
+    label_total = np.empty([0,])
+    pred_total = np.empty([0,])
+    for batch, (x, adj, label) in enumerate(dataset):
+        pred = model(x, adj, False)
+        label_total = np.concatenate((label_total, label), axis=0)
+        pred_total = np.concatenate((pred_total, pred), axis=0)
+        
+    np.save('./outputs/'+model_name+'_label.npy', label_total)
+    np.save('./outputs/'+model_name+'_pred.npy', pred_total)
+    
+    return
 
 
-def evaluation_step(model, optimizer, dataset, metrics):
+def evaluation_step(model, dataset, metrics):
 
     st = time.time()
     for (batch, (x, adj, label)) in enumerate(dataset):
@@ -85,6 +98,8 @@ def train(model, optimizer, train_ds, test_ds):
     model_name += '_' + str(FLAGS.use_ffnn)
     model_name += '_' + str(FLAGS.dropout_rate)
     model_name += '_' + str(FLAGS.readout_method)
+    model_name += '_' + str(FLAGS.concat_readout)
+    model_name += '_' + str(FLAGS.mc_dropout)
     ckpt_path = './save/'+model_name
 
     checkpoint = tf.train.Checkpoint(
@@ -96,8 +111,6 @@ def train(model, optimizer, train_ds, test_ds):
         directory=ckpt_path, 
         max_to_keep=FLAGS.max_to_keep
     )
-
-    #writer = tf.summary.create_file_writer("./results/"+model_name+".out")
 
     train_metrics = [
         tf.keras.metrics.BinaryAccuracy(name='Train_Accuracy'),
@@ -124,9 +137,12 @@ def train(model, optimizer, train_ds, test_ds):
     for epoch in range(start_epoch, FLAGS.num_epoches):
         print (epoch, "-th epoch is running")
         train_step(model, optimizer, loss_fn, train_ds, train_metrics)
-        evaluation_step(model, optimizer, test_ds, test_metrics)
+        evaluation_step(model, test_ds, test_metrics)
     et_total = time.time()
     print ("Total time for training:", round(et_total-st_total,3))
+    if FLAGS.save_outputs:
+        print ("Save the predictions for test dataset")
+        save_outputs(model, test_ds, model_name)
 
     return
 
@@ -225,7 +241,7 @@ if __name__ == '__main__':
                         help='Whether to use feed-forward nets')
     parser.add_argument('--dropout_rate', type=float, default=0.0, 
                         help='Dropout rates in node embedding layers')
-    parser.add_argument('--readout_method', type=str, default='graph_gather', 
+    parser.add_argument('--readout_method', type=str, default='linear', 
                         help='Readout method to be used')
     parser.add_argument('--concat_readout', type=str2bool, default=True, 
                         help='Whether to concatenate readout vectors')
@@ -268,6 +284,12 @@ if __name__ == '__main__':
 
 
     # Hyper-parameters for evaluation
+    parser.add_argument("--save_outputs", type=str2bool, default=True, 
+                        help='Whether to save final predictions for test dataset')
+    parser.add_argument('--mc_dropout', type=str2bool, default=False, 
+                        help='Whether to infer predictive distributions with MC-dropout')
+    parser.add_argument('--mc_sampling', type=int, default=20,
+                       help='Number of MC sampling')
     parser.add_argument('--top_k', type=int, default=200,
                        help='Top-k instances for evaluating Precision or Recall')
 
