@@ -8,7 +8,7 @@ Accelerating Chemical discovery with Graph Transformer
 1) Comparison on node embedding methods
 2) Comparison on graph embedding methods
 
-|                |           | BACE     |       |       | BBBP     |       |       | HIV      |       |       |
+|                |           |          | BACE  |       |          | BBBP  |       |          | HIV   |       |
 |----------------|-----------|----------|-------|-------|----------|-------|-------|----------|-------|-------|
 | Node update    | Readout   | Accuracy | AUROC | AUPRC | Accuracy | AUROC | AUPRC | Accuracy | AUROC | AUPRC |
 |    GraphConv   |    Mean   | 0.799    | 0.875 | 0.830 | **0.897**    | 0.909 | **0.965** | 0.967    | 0.726 | 0.230 |
