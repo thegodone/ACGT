@@ -9,7 +9,7 @@ def read_csv(prop, s_name, l_name, seed):
     rand_state = np.random.RandomState(seed)
     with open('./data/'+prop+'.csv', newline='') as csvfile:
         reader = csv.DictReader(csvfile)
-        contents = np.asarray([(row[s_name], row[l_name]) for row in reader])
+        contents = np.asarray([(row[s_name], row[l_name]) for row in reader if row[l_name] != ''])
         rand_state.shuffle(contents)
     return contents
 
@@ -49,6 +49,40 @@ def convert_smiles_to_graph(smi_and_label):
         adj = Chem.rdmolops.GetAdjacencyMatrix(mol)
         feature = [atom_feature(atom) for atom in mol.GetAtoms()]
         return [feature, adj, label]
+
+def get_slf(prop):
+
+    tox21_labels = [
+        'NR-AR', 'NR-AR-LBD', 'NR-AhR', 'NR-Aromatase', 'NR-ER', 'NR-ER-LBD', 
+        'NR-PPAR-gamma', 'SR-ARE', 'SR-ATAD5', 'SR-HSE', 'SR-MMP', 'SR-p53'
+    ]
+
+    s_name, l_name, f_name = None, None, None
+    if prop not in tox21_labels:
+        smiles_dict = {
+            'bace_c':'mol',
+            'bace_r':'mol',
+            'BBBP':'smiles',
+            'HIV':'smiles'
+        }    
+        
+        label_dict = {
+            'bace_c':'Class',
+            'bace_r':'pIC50',
+            'BBBP':'p_np',
+            'HIV':'HIV_active'
+        }
+
+        s_name = smiles_dict[prop]
+        l_name = label_dict[prop]
+        f_name = prop
+
+    if prop in tox21_labels:
+        s_name = 'smiles'
+        l_name = prop
+        f_name = 'tox21'
+
+    return s_name, l_name, f_name
  
  
 def get_dataset(prop, 
@@ -56,24 +90,10 @@ def get_dataset(prop,
                 train_ratio=0.8, 
                 seed=123):
 
-    smiles_dict = {
-        'bace_c':'mol',
-        'bace_r':'mol',
-        'BBBP':'smiles',
-        'HIV':'smiles'
-    }    
-        
-    label_dict = {
-        'bace_c':'Class',
-        'bace_r':'pIC50',
-        'BBBP':'p_np',
-        'HIV':'HIV_active'
-    }
 
-    s_name = smiles_dict[prop]
-    l_name = label_dict[prop]
+    s_name, l_name, f_name = get_slf(prop)
 
-    smi_and_label = read_csv(prop, s_name, l_name, seed)
+    smi_and_label = read_csv(f_name, s_name, l_name, seed)
     total_ds = tf.data.Dataset.from_tensor_slices(smi_and_label)
 
     num_total = smi_and_label.shape[0]
@@ -105,4 +125,4 @@ def get_dataset(prop,
     test_ds = test_ds.padded_batch(batch_size, padded_shapes=([None, 58], [None,None], []))
     test_ds = test_ds.cache()
 
-    return train_ds, test_ds 
+    return train_ds, test_ds, num_total, num_train
