@@ -1,15 +1,20 @@
 import csv
 
+
 import tensorflow as tf
 import numpy as np
 
+
 from rdkit import Chem
+
 
 def read_csv(prop, s_name, l_name, seed):
     rand_state = np.random.RandomState(seed)
     with open('./data/'+prop+'.csv', newline='') as csvfile:
         reader = csv.DictReader(csvfile)
-        contents = np.asarray([(row[s_name], row[l_name]) for row in reader if row[l_name] != ''])
+        contents = np.asarray([
+            (row[s_name], row[l_name]) for row in reader if row[l_name] != ''
+        ])
         rand_state.shuffle(contents)
     return contents
 
@@ -18,7 +23,9 @@ def atom_feature(atom):
 
     def one_of_k_encoding(x, allowable_set):
         if x not in allowable_set:
-            raise Exception("input {0} not in allowable set{1}:".format(x, allowable_set))
+            raise Exception(
+                "input {0} not in allowable set{1}:".format(x, allowable_set)
+            )
         return list(map(lambda s: float(x == s), allowable_set))
 
 
@@ -50,6 +57,7 @@ def convert_smiles_to_graph(smi_and_label):
         feature = [atom_feature(atom) for atom in mol.GetAtoms()]
         return [feature, adj, label]
 
+
 def get_slf(prop):
 
     tox21_labels = [
@@ -63,14 +71,28 @@ def get_slf(prop):
             'bace_c':'mol',
             'bace_r':'mol',
             'BBBP':'smiles',
-            'HIV':'smiles'
+            'HIV':'smiles',
+            'egfr':'smiles',
+            'egfr_arae':'smiles',
+            'egfr_arae2':'smiles',
+            'egfr_chembl':'smiles',
+            'logp':'smiles',
+            'tpsa':'smiles',
+            'sas':'smiles',
         }    
         
         label_dict = {
             'bace_c':'Class',
             'bace_r':'pIC50',
             'BBBP':'p_np',
-            'HIV':'HIV_active'
+            'HIV':'HIV_active',
+            'egfr':'activity',
+            'egfr_arae':'activity',
+            'egfr_arae2':'activity',
+            'egfr_chembl':'activity',
+            'logp':'prop',
+            'tpsa':'prop',
+            'sas':'prop',
         }
 
         s_name = smiles_dict[prop]
@@ -123,6 +145,53 @@ def get_dataset(prop,
     )
     test_ds = test_ds.apply(tf.data.experimental.ignore_errors())
     test_ds = test_ds.padded_batch(batch_size, padded_shapes=([None, 58], [None,None], []))
+    test_ds = test_ds.cache()
+
+    return train_ds, test_ds, num_total, num_train
+
+    
+def get_test_dataset(prop, 
+                     batch_size,
+                     seed=123):
+
+    s_name, l_name, f_name = get_slf(prop)
+
+    smi_and_label = read_csv(f_name, s_name, l_name, seed)
+    total_ds = tf.data.Dataset.from_tensor_slices(smi_and_label)
+
+    num_total = smi_and_label.shape[0]
+    num_train = int(num_total*train_ratio)
+
+    train_ds = total_ds.take(num_train)
+    test_ds = total_ds.skip(num_train)
+
+    train_ds = train_ds.prefetch(tf.data.experimental.AUTOTUNE)
+    train_ds = train_ds.shuffle(buffer_size=10*batch_size)
+    train_ds = train_ds.map(
+        lambda x: tf.py_function(func=convert_smiles_to_graph, 
+                                 inp=[x], 
+                                 Tout=[tf.float32, tf.float32, tf.float32]),
+        num_parallel_calls=7
+    )
+    train_ds = train_ds.apply(tf.data.experimental.ignore_errors())
+    train_ds = train_ds.padded_batch(
+        batch_size=batch_size, 
+        padded_shapes=([None, 58], [None,None], [])
+    )
+    train_ds = train_ds.cache()
+
+    test_ds = test_ds.prefetch(tf.data.experimental.AUTOTUNE)
+    test_ds = test_ds.map(
+        lambda x: tf.py_function(func=convert_smiles_to_graph, 
+                                 inp=[x], 
+                                 Tout=[tf.float32, tf.float32, tf.float32]),
+        num_parallel_calls=7
+    )
+    test_ds = test_ds.apply(tf.data.experimental.ignore_errors())
+    test_ds = test_ds.padded_batch(
+        batch_size=batch_size, 
+        padded_shapes=([None, 58], [None,None], [])
+    )
     test_ds = test_ds.cache()
 
     return train_ds, test_ds, num_total, num_train

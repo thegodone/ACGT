@@ -1,7 +1,9 @@
 import tensorflow as tf
 
+
 from libs.modules import NodeEmbedding
 from libs.modules import GraphEmbedding
+
 
 class PredictNet(tf.keras.Model):
     
@@ -14,9 +16,9 @@ class PredictNet(tf.keras.Model):
                  use_ln=True,
                  use_ffnn=True,
                  dropout_rate=0.1,
-                 readout_method='linear',
-                 pooling='mean',
-                 concat_readout=True):
+                 readout_method='pma',
+                 concat_readout=True,
+                 last_activation=None):
         super(PredictNet, self).__init__()
  
         self.num_layers = num_layers
@@ -26,9 +28,11 @@ class PredictNet(tf.keras.Model):
         self.node_embedding = [NodeEmbedding(node_dim, use_attn, num_heads, 
                                              use_ln, use_ffnn, dropout_rate) 
                                for _ in range(num_layers)]
-        self.graph_embedding = [GraphEmbedding(graph_dim, readout_method, pooling)
+        
+        self.graph_embedding = [GraphEmbedding(graph_dim, readout_method)
                                for _ in range(num_layers)]
-        self.dense = tf.keras.layers.Dense(1, activation=tf.nn.sigmoid)
+
+        self.dense = tf.keras.layers.Dense(1, activation=last_activation)
 
     def call(self, x, adj, training):
         h = self.first_embedding(x)
@@ -37,9 +41,8 @@ class PredictNet(tf.keras.Model):
             h = self.node_embedding[i](h, adj, training)
             z = self.graph_embedding[i](h)
             z_list.append(z)
-        
-        if self.concat_readout:    
-            z = tf.concat(z_list, axis=1)     
+
+        z = tf.concat(z_list, axis=1)     
 
         final_output = self.dense(z)
         final_output = tf.reshape(final_output, [-1])

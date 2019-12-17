@@ -1,23 +1,28 @@
 import tensorflow as tf
 
+
 def feed_forward_net(dim):
     return tf.keras.Sequential([
             tf.keras.layers.Dense(4*dim, activation=tf.nn.relu),
             tf.keras.layers.Dense(dim)
     ])
 
+
 class GraphConv(tf.keras.layers.Layer):
-    def __init__(self, out_dim, **kwargs):
+    def __init__(self, out_dim, pre_act, **kwargs):
         super(GraphConv, self).__init__(**kwargs)
 
         self.dense = tf.keras.layers.Dense(units=out_dim, use_bias=False)
         self.act = tf.nn.relu
+        self.pre_act = pre_act
 
-    def call(self, x, adj, act=tf.nn.relu):
+    def call(self, x, adj):
         h = self.dense(x)
         h = tf.matmul(adj, h)
-        h = self.act(h)
+        if self.pre_act:
+            h = self.act(h)
         return h
+
 
 class MultiHeadAttention(tf.keras.layers.Layer):
     def __init__(self, out_dim, num_heads, **kwargs):
@@ -67,7 +72,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
 
 class GraphAttn(tf.keras.layers.Layer):
-    def __init__(self, out_dim, num_heads, **kwargs):
+    def __init__(self, out_dim, num_heads, pre_act, **kwargs):
         super(GraphAttn, self).__init__(**kwargs)
 
         assert out_dim % num_heads == 0
@@ -80,13 +85,22 @@ class GraphAttn(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(units=out_dim, use_bias=False)
 
         self.act = tf.nn.relu
+        self.pre_act = pre_act
 
     def attn_matrix(self, q, k, adj):
         scale = tf.cast(tf.shape(k)[-1], tf.float32)
         attn = tf.matmul(q, k, transpose_b=True)
         attn = tf.multiply(attn, adj)
         attn /= tf.math.sqrt(scale)
+
         attn = tf.nn.tanh(attn)
+        """
+        attn = tf.nn.softmax(attn, axis=-1)
+        num_node_mat = tf.linalg.diag(
+            tf.reduce_sum(adj, axis=-1)
+        )
+        attn = tf.matmul(num_node_mat, attn)
+        """
         return attn
 
     def call(self, x, adj):
@@ -100,8 +114,10 @@ class GraphAttn(tf.keras.layers.Layer):
             h_list.append(h)
         h = tf.concat(h_list, axis=-1)    
         h = self.dense(h)
-        h = self.act(h)
+        if self.pre_act:
+            h = self.act(h)
         return h
+
 
 class MeanPooling(tf.keras.layers.Layer):
     def __init__(self, axis, **kwargs):
@@ -111,6 +127,7 @@ class MeanPooling(tf.keras.layers.Layer):
     def call(self, x):
         return tf.math.reduce_mean(x, axis=self.axis)
 
+
 class SumPooling(tf.keras.layers.Layer):
     def __init__(self, axis, **kwargs):
         super(SumPooling, self).__init__()
@@ -119,6 +136,7 @@ class SumPooling(tf.keras.layers.Layer):
     def call(self, x):
         return tf.math.reduce_sum(x, axis=self.axis)
 
+
 class MaxPooling(tf.keras.layers.Layer):
     def __init__(self, axis, **kwargs):
         super(MaxPooling, self).__init__()
@@ -126,6 +144,7 @@ class MaxPooling(tf.keras.layers.Layer):
 
     def call(self, x):
         return tf.math.reduce_max(x, axis=self.axis)
+
         
 class LinearReadout(tf.keras.layers.Layer):        
     def __init__(self, out_dim, pooling, **kwargs):
@@ -146,6 +165,7 @@ class LinearReadout(tf.keras.layers.Layer):
         z = self.pooling(z)
         return self.act(z)
     
+
 class GraphGatherReadout(tf.keras.layers.Layer):        
     def __init__(self, out_dim, pooling='mean', **kwargs):
         super(GraphGatherReadout, self).__init__(**kwargs)
@@ -189,11 +209,12 @@ class PMAReadout(tf.keras.layers.Layer):
         )
         self.mha= MultiHeadAttention(out_dim, num_heads)
         self.layer_norm = tf.keras.layers.LayerNormalization()
+        self.act = tf.nn.sigmoid
 
     def call(self, x):
         batch_size = tf.shape(x)[0]        
+        num_nodes = tf.cast(tf.shape(x)[1], tf.float32)
         out = tf.tile(self.seed_vector, [batch_size, 1, 1])
         out = self.mha(out, x, x)
-        out = tf.squeeze(out)
-        out = self.layer_norm(out)
-        return tf.nn.sigmoid(out)
+        out = tf.squeeze(out)*num_nodes
+        return self.act(out)
