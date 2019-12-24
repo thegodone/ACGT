@@ -49,34 +49,38 @@ def get_learning_rate_scheduler(lr_schedule='stair',
     return scheduler
 
 
-def get_loss_function(loss_type, alpha=0.25, gamma=2.0):
+def get_loss_function(loss_type):
     loss_fn = None
     if loss_type == 'bce':
         loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     elif loss_type == 'mse':
         loss_fn = tf.keras.losses.MeanSquaredError()
-    elif loss_type == 'focal':
-        loss_fn = tfa.losses.SigmoidFocalCrossEntropy(
-            from_logits=False, alpha=alpha, gamma=gamma
-        )
+    else:    
+        if 'focal' in loss_type:
+            alpha = float(loss_type.split('_')[1])
+            gamma = float(loss_type.split('_')[2])
+            loss_fn = tfa.losses.SigmoidFocalCrossEntropy(
+                from_logits=False, alpha=alpha, gamma=gamma
+            )
     return loss_fn    
 
 
 def get_metric_list(loss_type):
     metrics = None
-    if loss_type in ['bce', 'focal', 'class_balanced']:
+    
+    if loss_type in ['mse']:
+        metrics = [
+            tf.keras.metrics.MeanAbsoluteError(name='MAE'),
+            tf.keras.metrics.RootMeanSquaredError(name='RMSE'),
+        ]
+
+    else:        
         metrics = [
             tf.keras.metrics.BinaryAccuracy(name='Accuracy'),
             tf.keras.metrics.AUC(curve='ROC', name='AUROC'),
             tf.keras.metrics.AUC(curve='PR', name='AUPRC'),
             tf.keras.metrics.Precision(name='Precision'),
             tf.keras.metrics.Recall(name='Recall'),
-        ]
-
-    else:        
-        metrics = [
-            tf.keras.metrics.MeanAbsoluteError(name='MAE'),
-            tf.keras.metrics.RootMeanSquaredError(name='RMSE'),
         ]
 
     return metrics        

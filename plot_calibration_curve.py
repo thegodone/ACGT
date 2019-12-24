@@ -85,29 +85,10 @@ def distribution_analysis(label, pred, plot_log):
 
 
 def plot_calibration_curve(label, pred, model_name, bins=8):
-
-    fig = plt.figure(figsize=(10,10))
-    ax1 = plt.subplot2grid((3,1), (0,0), rowspan=2)
-    ax2 = plt.subplot2grid((3,1), (2,0))
-
-    ax1.plot([0,1], [0,1], "k:", label="Perfectly calibrated")
     fraction_of_positives, mean_predicted_value = \
         calibration_curve(label, pred, n_bins=bins, strategy='uniform')
-    ax1.plot(mean_predicted_value, fraction_of_positives, "s-")
-    ax2.hist(pred, range=(0,1), bins=bins, histtype="step", lw=2)
-
     ece = np.abs(mean_predicted_value - fraction_of_positives).sum()
-    #print ("Expected calibration error:", ece)
-
-    ax1.set_ylabel("Fraction of positives")
-    ax1.set_ylim([-0.05, 1.05])
-    ax1.set_title("Calibration plots (reliability curve)")
-
-    ax2.set_xlabel("Mean predicted value")
-    ax2.set_ylabel("Count")
-
-    plt.tight_layout()
-    plt.savefig("./figures/"+model_name+"_calibration_curve.png")
+    print ("Expected calibration error:", ece)
     return fraction_of_positives, mean_predicted_value
 
 
@@ -180,6 +161,7 @@ prefix = 'ACGT'
 prefix = 'Bayesian'
 prefix = 'Bayesian_re2'
 prefix = 'Bayesian_re4'
+prefix = 'Imbalance'
 prop = 'egfr'
 prop = tox21_list[0]
 prop = 'BBBP'
@@ -193,7 +175,19 @@ num_layers = 4
 num_heads = 4
 weight_decay = 1e-4
 
-model_list = [(0.0, False), (0.2, False), (0.2, True)]
+loss = 'focal_' + sys.argv[3]
+
+model_list = [(0.0, False, 'focal_0.5_0.0'), (0.2, False, 'focal_0.5_0.0'), (0.2, True, 'focal_0.5_0.0')]
+
+model_list = [(0.0, False, loss+'_1.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_1.0')]
+model_list = [(0.0, False, loss+'_2.0'), (0.0, False, loss+'_2.0'), (0.0, True, loss+'_2.0')]
+model_list = [(0.0, False, loss+'_5.0'), (0.0, False, loss+'_5.0'), (0.0, True, loss+'_5.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_0.0'), (0.0, True, loss+'_0.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_2.0'), (0.0, True, loss+'_5.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_2.0'), (0.0, True, loss+'_5.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_2.0'), (0.0, True, loss+'_5.0')]
+
+
 bins = 10
 plot_log = int(sys.argv[2])
 for seed in seed_list:
@@ -211,6 +205,7 @@ for seed in seed_list:
 
         dropout_rate = model[0]
         mc_dropout = model[1]
+        loss_type = model[2]
 
         model_name = prefix
         model_name += '_' + prop
@@ -225,6 +220,7 @@ for seed in seed_list:
         model_name += '_' + str(weight_decay)
         model_name += '_' + str(readout_method)
         model_name += '_' + str(concat_readout)
+        model_name += '_' + str(loss_type)
         model_name += '_' + str(mc_dropout)
 
         label, pred  = load_results(model_name)
@@ -239,18 +235,43 @@ for seed in seed_list:
     ax2 = plt.subplot2grid((3,1), (2,0))
 
     label_list = [
-        'p=0.0', 'p=0.2, No MC', 'p=0.2, MC=20'
+        'p=0.0', 'p=0.2, weight average', 'p=0.2, MC sampling'
     ]
+    label_list = [
+        '(0.5, 0.0)', '(0.5, 1.0)', '(0.5, 2.0)', '(0.5, 5.0)'
+    ]
+    label_list = [
+        '(0.5, 1.0)', '(0.75, 1.0)', '(0.9, 1.0)'
+    ]
+    label_list = [
+        '(0.5, 2.0)', '(0.75, 2.0)', '(0.9, 2.0)'
+    ]
+    label_list = [
+        '(0.5, 5.0)', '(0.75, 5.0)', '(0.9, 5.0)'
+    ]
+    label_list = [
+        '(0.5, 0.0)', '(0.75, 0.0)', '(0.9, 0.0)'
+    ]
+    label_list = [
+        '('+r'$\alpha$='+sys.argv[3]+', '+r'$\gamma$='+'0.0)',
+        '('+r'$\alpha$='+sys.argv[3]+', '+r'$\gamma$='+'1.0)',
+        '('+r'$\alpha$='+sys.argv[3]+', '+r'$\gamma$='+'2.0)',
+        '('+r'$\alpha$='+sys.argv[3]+', '+r'$\gamma$='+'5.0)',
+    ]
+
+    color_list = [
+        'r', 'g', 'b', 'c'
+    ]    
     
     ax1.plot([0,1], [0,1], "k:", label="Perfectly calibrated")
     for i in range(len(model_list)):
-        ax1.plot(mpv_list[i], fop_list[i], "s-", label=label_list[i])
-        ax2.hist(pred_list[i], range=(0,1), bins=bins, histtype="step", lw=2, label=label_list[i])
+        ax1.plot(mpv_list[i], fop_list[i], "s-", label=label_list[i], c=color_list[i])
+        ax2.hist(pred_list[i], range=(0,1), bins=bins, histtype="step", lw=1, label=label_list[i], color=color_list[i])
 
-    ax1.set_xlabel("Output probability", fontsize=15)
+    #ax1.set_xlabel("Output probability", fontsize=15)
     ax1.set_ylabel("Fraction of positives", fontsize=15)
     ax1.set_ylim([-0.05, 1.05])
-    ax1.legend()
+    ax1.legend(fontsize=12)
 
     ax2.set_xlabel("Output probability", fontsize=15)
     ax2.set_ylabel("Count", fontsize=15)
@@ -258,4 +279,4 @@ for seed in seed_list:
         ax2.set_yscale("log")
 
     plt.tight_layout()
-    plt.savefig("./figures/"+prop+'_'+str(seed)+"_calibration_curve_re.png")
+    plt.savefig("./figures/"+prop+'_'+str(seed)+'_'+sys.argv[3]+"_calibration_curve_re.png")

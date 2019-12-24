@@ -14,18 +14,19 @@ def get_config(prop):
     elif prop in ['tpsa', 'sas', 'logp']:
         num_epoches, decay_steps = 50, 20
     elif prop in 'HIV':
-        num_epoches, decay_steps = 50, 20
+        num_epoches, decay_steps = 100, 40
+    elif prop in ['egfr_dude', 'vgfr2_dude', 'tgfr1_dude', 'abl1_dude']:
+        num_epoches, decay_steps = 100, 40
     elif prop in tox21_list:
         num_epoches, decay_steps = 100, 40
     return num_epoches, decay_steps
 
-save_dir = './results/exp_bayesian/'
+save_dir = './results/exp_screening/'
 horus_id = {
-    0:'horus4',
-    1:'horus6',
-    2:'horus7',
-    3:'horus10',
-    4:'horus12',
+    0:'horus11',
+    1:'horus10',
+    2:'horus12',
+    3:'horus13',
 }
 
 prop_list = [
@@ -42,6 +43,10 @@ prop_list = [
     'bace_c', 'BBBP', 'HIV',
 ]
 
+prop_list = [
+    'egfr_dude', 'tgfr1_dude', 'abl1_dude', 'vgfr2_dude'
+]
+
 # use_attn, use_ffnn, use_concat, readout_method
 task_list = [
     #(False, False, True, 'mean'),
@@ -52,17 +57,16 @@ task_list = [
     #(True, False, True, 'pma'),
 ]
 
-seed_list = [1111]
 seed_list = [1111, 2222, 3333, 4444, 5555]
+seed_list = [1111]
 prefix = 'Stock'
-prefix = 'Bayesian_re4'
+prefix = 'DUDE'
 
 node_dim = 64
 graph_dim = 256
-dropout_rate = 0.0
-prior_length = 1e-6
+dropout_rate = 0.2
+prior_length = 1e-4
 loss_type = 'bce'
-num_layers_list = [2,3,4,5,6]
 num_layers_list = [4]
 
 count = -1
@@ -135,6 +139,7 @@ python -u train.py --prefix=''' + prefix + \
                  ' --num_epoches=' + str(num_epoches) + \
                  ' --decay_steps=' + str(decay_steps) + \
                  ' --loss_type=' + str(loss_type) + \
+                 ' --save_model=' + str(True) + \
                  ' > ' + save_dir + file_name + '''
 
 date''')

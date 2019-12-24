@@ -84,60 +84,12 @@ def distribution_analysis(label, pred, plot_log):
     return
 
 
-def plot_calibration_curve(label, pred, model_name, bins=10):
-
-    fig = plt.figure(figsize=(10,10))
-    ax1 = plt.subplot2grid((3,1), (0,0), rowspan=2)
-    ax2 = plt.subplot2grid((3,1), (2,0))
-
-    ax1.plot([0,1], [0,1], "k:", label="Perfectly calibrated")
+def plot_calibration_curve(label, pred, model_name, bins=8):
     fraction_of_positives, mean_predicted_value = \
         calibration_curve(label, pred, n_bins=bins, strategy='uniform')
-    ax1.plot(mean_predicted_value, fraction_of_positives, "s-")
-    ax2.hist(pred, range=(0,1), bins=bins, histtype="step", lw=2)
-
     ece = np.abs(mean_predicted_value - fraction_of_positives).sum()
-    #print ("Expected calibration error:", ece)
+    return fraction_of_positives, mean_predicted_value, ece
 
-    ax1.set_ylabel("Fraction of positives")
-    ax1.set_ylim([-0.05, 1.05])
-    ax1.set_title("Calibration plots (reliability curve)")
-
-    ax2.set_xlabel("Mean predicted value")
-    ax2.set_ylabel("Count")
-
-    plt.tight_layout()
-    plt.savefig("./figures/"+model_name+"_calibration_curve.png")
-    return ece
-
-
-def reliability_diagram(label, pred, model_name, bins=10):
-
-    width = 1.0 / bins
-    bin_centers = np.linspace(0, 1.0-width, bins) + width/2
-
-    conf_bin_mean = np.empty(bins)
-    acc_bin_mean = np.empty(bins)
-    ece = 0.0
-    for i, threshold in enumerate(bin_centers):
-        bin_idx = np.logical_and(threshold - width/2 < pred,
-                                 pred <= threshold + width)
-        conf_bin_mean[i] = pred[bin_idx].mean()
-        acc_bin_mean[i] = label[bin_idx].mean()
-    
-    ece = np.abs(conf_bin_mean - acc_bin_mean).sum()
-    print ("Expected Calibration Error:", ece)
-    plt.figure()
-    plt.plot([0.0, 1.0], 'k:', label="Perfect calibration")
-    plt.plot(conf_bin_mean, acc_bin_mean, "s-")
-    plt.xlabel("Confidence (output probability)")
-    plt.ylabel("Accuracy")
-    plt.ylim([-0.05, 1.05])
-    #ax1.legend()
-    plt.title("Calibration plots (reliability curve)")
-    plt.tight_layout()
-    plt.savefig("./figures/"+model_name+"_reliability_curve.png")
-    return    
 
 def performances(y_truth, y_pred):
     auroc = 0.0
@@ -179,48 +131,63 @@ task_list = [
 prefix = 'ACGT'
 prefix = 'Bayesian'
 prefix = 'Bayesian_re2'
-prefix = 'Bayesian_re3'
+prefix = 'Bayesian_re4'
 prefix = 'Imbalance'
 prop = 'egfr'
 prop = tox21_list[0]
 prop = 'BBBP'
 prop = 'HIV'
 prop = 'bace_c'
-prop = sys.argv[2]
+prop = sys.argv[1]
+
+plot_log = int(sys.argv[2])
 
 node_dim = 64
 graph_dim = 256
 num_layers = 4
 num_heads = 4
 weight_decay = 1e-4
-dropout_rate = 0.5
-dropout_rate = 0.0
-dropout_rate = float(sys.argv[3])
 
-mc_dropout = False
-mc_dropout = True
-mc_dropout = sys.argv[1]
-loss_type = sys.argv[4]
-print (mc_dropout)
+loss = 'focal_' + sys.argv[3]
 
-for task in task_list:
+model_list = [(0.0, False, 'focal_0.5_0.0'), (0.2, False, 'focal_0.5_0.0'), (0.2, True, 'focal_0.5_0.0')]
+
+model_list = [(0.0, False, loss+'_1.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_1.0')]
+model_list = [(0.0, False, loss+'_2.0'), (0.0, False, loss+'_2.0'), (0.0, True, loss+'_2.0')]
+model_list = [(0.0, False, loss+'_5.0'), (0.0, False, loss+'_5.0'), (0.0, True, loss+'_5.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_0.0'), (0.0, True, loss+'_0.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_2.0'), (0.0, True, loss+'_5.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_2.0'), (0.0, True, loss+'_5.0')]
+model_list = [(0.0, False, loss+'_0.0'), (0.0, False, loss+'_1.0'), (0.0, True, loss+'_2.0'), (0.0, True, loss+'_5.0')]
+bins = 10
+
+auroc_list = []
+precision_list = []
+recall_list = []
+f1_list = []
+ece_list = []
+
+for model in model_list:
+    fop_list = []
+    mpv_list = []
+    pred_list = []
+
     ece_mean = 0.0
-    precision1_mean = 0.0
-    precision2_mean = 0.0
-    precision3_mean = 0.0
-    precision4_mean = 0.0
-
     auroc_mean = 0.0
     precision_mean = 0.0
     recall_mean = 0.0
     f1_mean = 0.0
     for seed in seed_list:
 
-        use_attn = task[0]
-        use_ln = task[1]
-        use_ffnn = task[2]
-        concat_readout = task[3]
-        readout_method = task[4]
+        use_attn = False
+        use_ln = False
+        use_ffnn = False
+        concat_readout = True
+        readout_method = 'pma'
+
+        dropout_rate = model[0]
+        mc_dropout = model[1]
+        loss_type = model[2]
 
         model_name = prefix
         model_name += '_' + prop
@@ -239,36 +206,49 @@ for task in task_list:
         model_name += '_' + str(mc_dropout)
 
         label, pred  = load_results(model_name)
-        ece = plot_calibration_curve(label, pred, model_name)
-        #reliability_diagram(label, pred, model_name)
-        distribution_analysis(label, pred, plot_log=True)
-        precision1 = top_k_precision(label, pred, 0.1)
-        precision2 = top_k_precision(label, pred, 0.2)
-        precision3 = top_k_precision(label, pred, 0.5)
-        precision4 = top_k_precision(label, pred, 1.0)
-
+        fop, mpv, ece = plot_calibration_curve(label, pred, model_name, bins)
         accuracy, auroc, precision0, recall, f1_score = performances(label, pred)
         auroc_mean += auroc
         recall_mean += recall
         precision_mean += precision0
         f1_mean += f1_score
-        
         ece_mean += ece
-        precision1_mean += precision1
-        precision2_mean += precision2
-        precision3_mean += precision3
-        precision4_mean += precision4
-        #top_k_precision(label, pred, 250)
-        #top_k_precision(label, pred, 500)
+
     ece_mean /= len(seed_list)    
-    precision1_mean /= len(seed_list)    
-    precision2_mean /= len(seed_list)    
-    precision3_mean /= len(seed_list)    
-    precision4_mean /= len(seed_list)    
     auroc_mean /= len(seed_list)
     recall_mean /= len(seed_list)
     precision_mean /= len(seed_list)
     f1_mean /= len(seed_list)
-    print (ece_mean, auroc_mean, precision_mean, recall_mean, f1_mean)
-    #print (ece_mean, precision1_mean, precision2_mean, precision3_mean, precision4_mean, auroc_mean, precision_mean, recall_mean, f1_mean)
-    #exit(-1)
+
+    ece_list.append(ece_mean)
+    auroc_list.append(auroc_mean)
+    precision_list.append(precision_mean)
+    recall_list.append(recall_mean)
+    f1_list.append(f1_mean)
+
+fig = plt.figure()
+plt.plot([0.0, 1.0, 2.0, 5.0], auroc_list, 's-', c='r', label='AUROC')
+plt.plot([0.0, 1.0, 2.0, 5.0], recall_list, 's-', c='g', label='Recall')
+plt.plot([0.0, 1.0, 2.0, 5.0], precision_list, 's-', c='b', label='Precision')
+plt.plot([0.0, 1.0, 2.0, 5.0], f1_list, 's-', c='c', label='F1-score')
+#plt.plot('s-', c='r', label='AUROC')
+#plt.plot('s-', c='g', label='Recall')
+#plt.plot('s-', c='b', label='Precision')
+#plt.plot('s-', c='c', label='F1-score')
+plt.legend(fontsize=15, loc='right')
+plt.xticks([0.0, 1.0, 2.0, 5.0], fontsize=15)
+plt.yticks(fontsize=15)
+plt.xlabel('gamma', fontsize=15)
+plt.ylabel('Evaluation metric', fontsize=15)
+plt.tight_layout()
+plt.savefig('./figures/prf'+sys.argv[3]+'.png')
+
+fig = plt.figure()
+plt.plot([0.0, 1.0, 2.0, 5.0], ece_list, 's-', c='r', label='ECE')
+plt.legend(fontsize=12)
+plt.xticks([0.0, 1.0, 2.0, 5.0], fontsize=15)
+plt.yticks(fontsize=15)
+plt.xlabel('gamma', fontsize=15)
+plt.ylabel('Evaluation metric', fontsize=15)
+plt.tight_layout()
+plt.savefig('./figures/ece'+sys.argv[3]+'.png')

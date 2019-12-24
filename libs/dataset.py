@@ -8,14 +8,15 @@ import numpy as np
 from rdkit import Chem
 
 
-def read_csv(prop, s_name, l_name, seed):
+def read_csv(prop, s_name, l_name, seed, shuffle):
     rand_state = np.random.RandomState(seed)
     with open('./data/'+prop+'.csv', newline='') as csvfile:
         reader = csv.DictReader(csvfile)
         contents = np.asarray([
             (row[s_name], row[l_name]) for row in reader if row[l_name] != ''
         ])
-        rand_state.shuffle(contents)
+        if shuffle:
+            rand_state.shuffle(contents)
     return contents
 
 
@@ -66,43 +67,52 @@ def get_slf(prop):
     ]
 
     s_name, l_name, f_name = None, None, None
-    if prop not in tox21_labels:
-        smiles_dict = {
-            'bace_c':'mol',
-            'bace_r':'mol',
-            'BBBP':'smiles',
-            'HIV':'smiles',
-            'egfr':'smiles',
-            'egfr_arae':'smiles',
-            'egfr_arae2':'smiles',
-            'egfr_chembl':'smiles',
-            'logp':'smiles',
-            'tpsa':'smiles',
-            'sas':'smiles',
-        }    
-        
-        label_dict = {
-            'bace_c':'Class',
-            'bace_r':'pIC50',
-            'BBBP':'p_np',
-            'HIV':'HIV_active',
-            'egfr':'activity',
-            'egfr_arae':'activity',
-            'egfr_arae2':'activity',
-            'egfr_chembl':'activity',
-            'logp':'prop',
-            'tpsa':'prop',
-            'sas':'prop',
-        }
-
-        s_name = smiles_dict[prop]
-        l_name = label_dict[prop]
-        f_name = prop
 
     if prop in tox21_labels:
         s_name = 'smiles'
         l_name = prop
         f_name = 'tox21'
+
+    else:
+        if 'dude' in prop:
+            s_name = 'smiles'
+            l_name = 'activity'
+            f_name = prop
+
+        elif 'chembl' in prop:
+            s_name = 'smiles'
+            l_name = 'pIC50'
+            f_name = prop
+
+        else:
+
+            smiles_dict = {
+                'bace_c':'mol',
+                'bace_r':'mol',
+                'BBBP':'smiles',
+                'HIV':'smiles',
+                'egfr':'smiles',
+                'egfr_chembl':'smiles',
+                'logp':'smiles',
+                'tpsa':'smiles',
+                'sas':'smiles',
+            }    
+        
+            label_dict = {
+                'bace_c':'Class',
+                'bace_r':'pIC50',
+                'BBBP':'p_np',
+                'HIV':'HIV_active',
+                'egfr':'activity',
+                'egfr_chembl':'activity',
+                'logp':'prop',
+                'tpsa':'prop',
+                'sas':'prop',
+            }
+
+            s_name = smiles_dict[prop]
+            l_name = label_dict[prop]
+            f_name = prop
 
     return s_name, l_name, f_name
  
@@ -110,12 +120,13 @@ def get_slf(prop):
 def get_dataset(prop, 
                 batch_size,
                 train_ratio=0.8, 
-                seed=123):
+                seed=123,
+                shuffle=True):
 
 
     s_name, l_name, f_name = get_slf(prop)
 
-    smi_and_label = read_csv(f_name, s_name, l_name, seed)
+    smi_and_label = read_csv(f_name, s_name, l_name, seed, shuffle)
     total_ds = tf.data.Dataset.from_tensor_slices(smi_and_label)
 
     num_total = smi_and_label.shape[0]

@@ -131,6 +131,7 @@ def train(model):
     model_name += '_' + str(FLAGS.prior_length)
     model_name += '_' + str(FLAGS.readout_method)
     model_name += '_' + str(FLAGS.concat_readout)
+    model_name += '_' + str(FLAGS.loss_type)
     ckpt_path = './save/'+model_name
 
     train_ds, test_ds, num_total, num_train = get_dataset(
@@ -139,6 +140,7 @@ def train(model):
         seed=FLAGS.seed
     )
     print ("Number of training and test data:", num_train, num_total-num_train)
+    print ("Model name:", model_name)
 
     step = tf.Variable(0, trainable=False)
     schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
@@ -176,8 +178,6 @@ def train(model):
 
     loss_fn = get_loss_function(
         loss_type=FLAGS.loss_type,
-        alpha=FLAGS.focal_alpha,
-        gamma=FLAGS.focal_gamma
     )
 
     st_total = time.time()
@@ -221,9 +221,9 @@ def main(_):
         print ("Loss function", FLAGS.loss_type)
         return
     
-    last_activation = None
-    if FLAGS.loss_type in ['bce', 'focal', 'class_balanced']:
-        last_activation=tf.nn.sigmoid
+    last_activation = tf.nn.sigmoid
+    if FLAGS.loss_type in ['mse']:
+        last_activation=None
 
     model = PredictNet(
         num_layers=FLAGS.num_layers,
@@ -257,9 +257,9 @@ if __name__ == '__main__':
             raise argparse.ArgumentTypeEror('Boolean value expected')    
 
     # Hyper-parameters for prefix, prop and random seed
-    parser.add_argument('--prefix', type=str, default='GTA', 
+    parser.add_argument('--prefix', type=str, default='Imbalance', 
                         help='Prefix for this training')
-    parser.add_argument('--prop', type=str, default='bace_c', 
+    parser.add_argument('--prop', type=str, default='HIV', 
                         help='Target property to train')
     parser.add_argument('--seed', type=int, default=1111, 
                         help='Random seed will be used to shuffle dataset')
@@ -281,7 +281,7 @@ if __name__ == '__main__':
                         help='Whether to use feed-forward nets')
     parser.add_argument('--dropout_rate', type=float, default=0.0, 
                         help='Dropout rates in node embedding layers')
-    parser.add_argument('--prior_length', type=float, default=0.1, 
+    parser.add_argument('--prior_length', type=float, default=1e-4, 
                         help='Weight decay coefficient')
     parser.add_argument('--readout_method', type=str, default='pma', 
                         help='Readout method to be used')
@@ -302,7 +302,7 @@ if __name__ == '__main__':
     # Hyper-parameters for training
     parser.add_argument('--batch_size', type=int, default=128, 
                         help='Batch size')
-    parser.add_argument('--num_epoches', type=int, default=200, 
+    parser.add_argument('--num_epoches', type=int, default=100, 
                         help='Number of epoches')
     parser.add_argument('--init_lr', type=float, default=1e-3, 
                         help='Initial learning rate,\
@@ -313,13 +313,13 @@ if __name__ == '__main__':
                         help='Beta2 in adam optimizer')
     parser.add_argument('--opt_epsilon', type=float, default=1e-7, 
                         help='Epsilon in adam optimizer')
-    parser.add_argument('--decay_steps', type=int, default=80, 
+    parser.add_argument('--decay_steps', type=int, default=40, 
                         help='Decay steps for stair learning rate scheduling')
     parser.add_argument('--decay_rate', type=float, default=0.1, 
                         help='Decay rate for stair learning rate scheduling')
     parser.add_argument('--max_to_keep', type=int, default=5, 
                         help='Maximum number of checkpoint files to be kept')
-    parser.add_argument("--save_model", type=str2bool, default=False, 
+    parser.add_argument("--save_model", type=str2bool, default=True, 
                         help='Whether to save checkpoints')
 
 

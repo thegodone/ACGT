@@ -18,6 +18,47 @@ def load_results(model_name):
     return label, pred
 
 
+def float_to_onehot(label, threshold):
+    onehot = []
+    for i in label:
+        if i > threshold:
+            onehot.append(1)    
+        else:
+            onehot.append(0)    
+    return np.asarray(onehot)
+
+def pIC50_distribution(label, pred, model_name):
+
+    bin1 = []
+    bin2 = []
+
+    num_bins = 25
+    for i in range(len(pred)):
+        if pred[i] > 0.55:
+            bin1.append(label[i])
+        else:    
+            bin2.append(label[i])
+
+    plt.figure()
+    n, bins, patches = plt.hist(bin1, num_bins, label='Positives', color='tab:blue',   histtype='step', lw=2)
+    n, bins, patches = plt.hist(bin2, num_bins, label='Negatives', color='tab:orange', histtype='step', lw=2)
+    plt.xlabel('pIC50 in ChEMBL')
+    plt.ylabel('Counts')
+    plt.legend()
+    plt.savefig('./figures/'+model_name+'_pIC50_distribution.png')
+
+    return    
+
+
+def pIC50_pred_plot(label, pred, model_name):
+    plt.figure()
+    plt.scatter(label, pred, s=3)
+    plt.xlabel('pIC50 in ChEMBL')
+    plt.ylabel('Output probability')
+    plt.legend()
+    plt.savefig('./figures/'+model_name+'_pIC50_pred.png')
+    return
+
 def top_k_precision(label, pred, k):
 
     def get_sorted_idx(pred, k):
@@ -155,38 +196,15 @@ def performances(y_truth, y_pred):
     f1_score = 2*(precision*recall)/(precision+recall+1e-5)
     return accuracy, auroc, precision, recall, f1_score
 
-seed_list = [1111, 2222, 3333, 4444, 5555]
-tox21_list = [
-    'NR-AR', 'NR-AR-LBD', 'NR-AhR', 'NR-Aromatase', 'NR-ER', 'NR-ER-LBD', 
-    'NR-PPAR-gamma', 'SR-ARE', 'SR-ATAD5', 'SR-HSE', 'SR-MMP', 'SR-p53'
-]
-task_list = [
-    (False, True, False, True, 'linear'),
-    (False, True, True, True, 'linear'),
-    (True, True, False, True, 'linear'),
-    (True, True, True, True, 'linear'),
-    (False, True, False, True, 'pma'),
-    (False, True, True, True, 'pma'),
-    (True, True, False, True, 'pma'),
-    (True, True, True, True, 'pma'),
-]
+seed_list = [1111]
 
 task_list = [
-    (False, False, False, True, 'pma'),
+    (False, False, True, 'pma'),
 ]
 
 
-prefix = 'ACGT'
-prefix = 'Bayesian'
-prefix = 'Bayesian_re2'
-prefix = 'Bayesian_re3'
-prefix = 'Imbalance'
-prop = 'egfr'
-prop = tox21_list[0]
-prop = 'BBBP'
-prop = 'HIV'
-prop = 'bace_c'
-prop = sys.argv[2]
+prefix = 'DUDE'
+prop = sys.argv[2] 
 
 node_dim = 64
 graph_dim = 256
@@ -196,11 +214,9 @@ weight_decay = 1e-4
 dropout_rate = 0.5
 dropout_rate = 0.0
 dropout_rate = float(sys.argv[3])
+threshold = float(sys.argv[4])
 
-mc_dropout = False
-mc_dropout = True
 mc_dropout = sys.argv[1]
-loss_type = sys.argv[4]
 print (mc_dropout)
 
 for task in task_list:
@@ -211,16 +227,12 @@ for task in task_list:
     precision4_mean = 0.0
 
     auroc_mean = 0.0
-    precision_mean = 0.0
-    recall_mean = 0.0
-    f1_mean = 0.0
     for seed in seed_list:
 
         use_attn = task[0]
-        use_ln = task[1]
-        use_ffnn = task[2]
-        concat_readout = task[3]
-        readout_method = task[4]
+        use_ffnn = task[1]
+        concat_readout = task[2]
+        readout_method = task[3]
 
         model_name = prefix
         model_name += '_' + prop
@@ -235,10 +247,14 @@ for task in task_list:
         model_name += '_' + str(weight_decay)
         model_name += '_' + str(readout_method)
         model_name += '_' + str(concat_readout)
-        model_name += '_' + str(loss_type)
         model_name += '_' + str(mc_dropout)
 
         label, pred  = load_results(model_name)
+
+        pIC50_distribution(label, pred, model_name)
+        pIC50_pred_plot(label, pred, model_name)
+        label = float_to_onehot(label, threshold)
+        print (label)
         ece = plot_calibration_curve(label, pred, model_name)
         #reliability_diagram(label, pred, model_name)
         distribution_analysis(label, pred, plot_log=True)
@@ -249,9 +265,6 @@ for task in task_list:
 
         accuracy, auroc, precision0, recall, f1_score = performances(label, pred)
         auroc_mean += auroc
-        recall_mean += recall
-        precision_mean += precision0
-        f1_mean += f1_score
         
         ece_mean += ece
         precision1_mean += precision1
@@ -266,9 +279,5 @@ for task in task_list:
     precision3_mean /= len(seed_list)    
     precision4_mean /= len(seed_list)    
     auroc_mean /= len(seed_list)
-    recall_mean /= len(seed_list)
-    precision_mean /= len(seed_list)
-    f1_mean /= len(seed_list)
-    print (ece_mean, auroc_mean, precision_mean, recall_mean, f1_mean)
-    #print (ece_mean, precision1_mean, precision2_mean, precision3_mean, precision4_mean, auroc_mean, precision_mean, recall_mean, f1_mean)
+    print (ece_mean, precision1_mean, precision2_mean, precision3_mean, precision4_mean, auroc_mean)
     #exit(-1)
